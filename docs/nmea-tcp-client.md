@@ -1,0 +1,77 @@
+# NMEA TCP Client
+
+## Visao geral
+`NmeaTcpClient` adiciona suporte de cliente TCP a biblioteca `NmeaTransport` para integracao com o `NmeaTcpServer` existente. O cliente trabalha com mensagens estruturadas (`NmeaMessage`), envia sentencas em ASCII com checksum calculado automaticamente e consome mensagens recebidas com roteamento por `Header`.
+
+## API publica
+- `NmeaTcpClient(string host, int port, NmeaTcpClientOptions? options = null)`
+- `Task ConnectAsync(CancellationToken ct = default)`
+- `Task DisconnectAsync()`
+- `Task SendAsync(NmeaMessage message, CancellationToken ct = default)`
+- `IDisposable RegisterHandler(string header, NmeaMessageHandler handler)`
+
+### Tipos publicos
+- `NmeaMessage`
+  - `Header`
+  - `PayloadParts`
+- `NmeaTcpClientOptions`
+  - `ValidateChecksum`
+  - `ReconnectDelay`
+  - `ConnectTimeout`
+  - `WriteTimeout`
+
+## Comportamento
+- O cliente tenta a primeira conexao em `ConnectAsync`.
+- Em caso de queda, o cliente tenta reconectar indefinidamente enquanto nao houver `DisconnectAsync`.
+- Mensagens enviadas durante desconexao sao mantidas em fila e reenviadas depois da reconexao.
+- Handlers registrados por `Header` permanecem ativos durante todo o ciclo de vida da instancia.
+- A validacao obrigatoria sempre verifica o prefixo NMEA (`$` ou `!`).
+- A validacao de checksum e opcional e controlada por `ValidateChecksum`.
+- Mensagens invalidas sao descartadas e registradas no `Console`.
+
+## Exemplo de uso
+```csharp
+using NmeaTransport.Clients;
+
+var client = new NmeaTcpClient(
+    "127.0.0.1",
+    5000,
+    new NmeaTcpClientOptions
+    {
+        ValidateChecksum = true,
+        ReconnectDelay = TimeSpan.FromSeconds(2),
+        ConnectTimeout = TimeSpan.FromSeconds(1),
+        WriteTimeout = TimeSpan.FromSeconds(1)
+    });
+
+using var registration = client.RegisterHandler("GPGLL", async (message, ct) =>
+{
+    Console.WriteLine($"{message.Header}: {string.Join(", ", message.PayloadParts)}");
+    await Task.CompletedTask;
+});
+
+await client.ConnectAsync();
+
+await client.SendAsync(new NmeaMessage("GPGLL", new[]
+{
+    "4916.45",
+    "N",
+    "12311.12",
+    "W",
+    "225444",
+    "A",
+    string.Empty
+}));
+
+await client.DisconnectAsync();
+```
+
+## Validacao e serializacao
+- O envio sempre serializa a mensagem como `$<header>,<payload>*<checksum>\r\n`.
+- O checksum e calculado sobre o corpo da sentenca, sem incluir o inicializador e sem incluir o terminador de linha.
+- O recebimento separa a sentenca em:
+  - `Header`
+  - `PayloadParts`, obtido por `Split(',')`
+
+## Documentacao de codigo
+As classes e metodos publicos relevantes do cliente foram documentados com XML comments para apoiar geracao futura de documentacao por ferramentas como Doxygen ou pipelines equivalentes.

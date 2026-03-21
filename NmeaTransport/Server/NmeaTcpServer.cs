@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
-using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using NmeaTransport.Internal;
 
 namespace NmeaTransport.Server;
 
@@ -19,14 +19,25 @@ public sealed class NmeaTcpServer : IAsyncDisposable
     private bool _isRunning;
     private int _nextClientId;
 
+    /// <summary>
+    /// Creates a new instance of <see cref="NmeaTcpServer"/>.
+    /// </summary>
+    /// <param name="port">The TCP port to listen on.</param>
     public NmeaTcpServer(int port)
     {
         _port = port;
         _listener = new TcpListener(IPAddress.Any, port);
     }
 
+    /// <summary>
+    /// Gets the server listening port.
+    /// </summary>
     public int Port => _port;
 
+    /// <summary>
+    /// Starts accepting TCP clients until the server is stopped or the token is cancelled.
+    /// </summary>
+    /// <param name="ct">A token used to stop the server lifecycle.</param>
     public async Task StartAsync(CancellationToken ct = default)
     {
         CancellationTokenSource lifecycleCts;
@@ -45,31 +56,32 @@ public sealed class NmeaTcpServer : IAsyncDisposable
 
         _listener.Start();
         Console.WriteLine($"NMEA TCP Server started on port {_port}...");
+        var lifecycleToken = lifecycleCts.Token;
 
         try
         {
-            while (!lifecycleCts.Token.IsCancellationRequested)
+            while (!lifecycleToken.IsCancellationRequested)
             {
                 TcpClient tcpClient;
 
                 try
                 {
-                    tcpClient = await _listener.AcceptTcpClientAsync(lifecycleCts.Token);
+                    tcpClient = await _listener.AcceptTcpClientAsync(lifecycleToken);
                 }
-                catch (OperationCanceledException) when (lifecycleCts.Token.IsCancellationRequested)
+                catch (OperationCanceledException) when (lifecycleToken.IsCancellationRequested)
                 {
                     break;
                 }
-                catch (ObjectDisposedException) when (lifecycleCts.Token.IsCancellationRequested)
+                catch (ObjectDisposedException) when (lifecycleToken.IsCancellationRequested)
                 {
                     break;
                 }
-                catch (SocketException) when (lifecycleCts.Token.IsCancellationRequested)
+                catch (SocketException) when (lifecycleToken.IsCancellationRequested)
                 {
                     break;
                 }
 
-                RegisterClient(tcpClient, lifecycleCts.Token);
+                RegisterClient(tcpClient, lifecycleToken);
             }
         }
         finally
@@ -78,6 +90,9 @@ public sealed class NmeaTcpServer : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Stops the server and disconnects all connected clients.
+    /// </summary>
     public async Task StopAsync()
     {
         CancellationTokenSource? lifecycleCts;
@@ -96,6 +111,7 @@ public sealed class NmeaTcpServer : IAsyncDisposable
         await ShutdownAsync().ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
@@ -103,53 +119,19 @@ public sealed class NmeaTcpServer : IAsyncDisposable
 
     internal static bool HasValidNmeaPrefix(string? sentence)
     {
-        return !string.IsNullOrWhiteSpace(sentence) &&
-               (sentence[0] == '$' || sentence[0] == '!');
+        return NmeaSentence.HasValidPrefix(sentence);
     }
 
     internal static bool ValidateChecksum(string sentence)
     {
-        if (!HasValidNmeaPrefix(sentence))
-        {
-            return false;
-        }
-
-        var asterisk = sentence.IndexOf('*');
-        if (asterisk <= 1 || asterisk != sentence.Length - 3)
-        {
-            return false;
-        }
-
-        var checksumText = sentence[(asterisk + 1)..];
-
-        if (!byte.TryParse(checksumText, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var expectedChecksum))
-        {
-            return false;
-        }
-
-        var checksum = 0;
-
-        for (var index = 1; index < asterisk; index++)
-        {
-            checksum ^= sentence[index];
-        }
-
-        return checksum == expectedChecksum;
+        return NmeaSentence.ValidateChecksum(sentence);
     }
 
     internal static bool IsValidSentence(string? sentence)
     {
-        if (!HasValidNmeaPrefix(sentence))
-        {
-            return false;
-        }
-
-        if (sentence!.Length < 2)
-        {
-            return false;
-        }
-
-        return !sentence.Contains('*') || ValidateChecksum(sentence);
+        return NmeaSentence.HasValidPrefix(sentence) &&
+               sentence!.Length >= 2 &&
+               (!sentence.Contains('*') || NmeaSentence.ValidateChecksum(sentence));
     }
 
     private void RegisterClient(TcpClient tcpClient, CancellationToken ct)
