@@ -1,9 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>netstandard2.1</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+
+        <PackageId>NmeaTransport</PackageId>
+        <Version>0.0.1</Version>
+        <Authors>Vinicius Rosa</Authors>
+        <Description>A simple NMEA transport library for .NET</Description>
+        <PackageDescription>A simple NMEA transport library for .NET</PackageDescription>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
     </PropertyGroup>
 
     <ItemGroup>
