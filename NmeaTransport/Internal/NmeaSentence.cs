@@ -5,7 +5,7 @@ namespace NmeaTransport.Internal;
 
 internal static class NmeaSentence
 {
-    private static readonly char[] ValidInitializers = ['$', '!'];
+    private static readonly char[] ValidInitializers = { '$', '!' };
 
     internal static bool HasValidPrefix(string? sentence)
     {
@@ -54,7 +54,10 @@ internal static class NmeaSentence
 
     internal static string Serialize(NmeaMessage message)
     {
-        ArgumentNullException.ThrowIfNull(message);
+        if (message is null)
+        {
+            throw new ArgumentNullException(nameof(message));
+        }
 
         var body = BuildBody(message.Header, message.PayloadParts);
         var checksum = CalculateChecksum(body.AsSpan());

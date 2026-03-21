@@ -66,7 +66,7 @@ public sealed class NmeaTcpServer : IAsyncDisposable
 
                 try
                 {
-                    tcpClient = await _listener.AcceptTcpClientAsync(lifecycleToken);
+                    tcpClient = await _listener.AcceptTcpClientAsync().WaitAsyncCompat(lifecycleToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (lifecycleToken.IsCancellationRequested)
                 {
@@ -314,7 +314,7 @@ public sealed class NmeaTcpServer : IAsyncDisposable
             Id = id;
             Client = client;
             _stream = client.GetStream();
-            Reader = new StreamReader(_stream, encoding, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+            Reader = new StreamReader(_stream, encoding, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
         }
 
         public int Id { get; }
@@ -328,7 +328,7 @@ public sealed class NmeaTcpServer : IAsyncDisposable
             try
             {
                 ThrowIfDisposed();
-                await _stream.WriteAsync(payload, ct).ConfigureAwait(false);
+                await _stream.WriteAsync(payload, 0, payload.Length, ct).ConfigureAwait(false);
                 await _stream.FlushAsync(ct).ConfigureAwait(false);
             }
             finally

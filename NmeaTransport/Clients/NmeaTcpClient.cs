@@ -28,7 +28,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
     private readonly int _port;
     private readonly NmeaTcpClientOptions _options;
 
-    private TaskCompletionSource _connectionAvailable = CreateSignal();
+    private TaskCompletionSource<bool> _connectionAvailable = CreateSignal();
     private CancellationTokenSource? _lifecycleCts;
     private Task? _lifecycleTask;
     private Task? _senderTask;
@@ -87,7 +87,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
 
         try
         {
-            await connectionTask.WaitAsync(ct).ConfigureAwait(false);
+            await connectionTask.WaitAsyncCompat(ct).ConfigureAwait(false);
         }
         catch
         {
@@ -151,7 +151,10 @@ public sealed class NmeaTcpClient : INmeaTcpClient
     /// <inheritdoc />
     public Task SendAsync(NmeaMessage message, CancellationToken ct = default)
     {
-        ArgumentNullException.ThrowIfNull(message);
+        if (message is null)
+        {
+            throw new ArgumentNullException(nameof(message));
+        }
 
         if (Volatile.Read(ref _lifecycleState) == 2)
         {
@@ -170,7 +173,10 @@ public sealed class NmeaTcpClient : INmeaTcpClient
             throw new ArgumentException("The header must not be null or whitespace.", nameof(header));
         }
 
-        ArgumentNullException.ThrowIfNull(handler);
+        if (handler is null)
+        {
+            throw new ArgumentNullException(nameof(handler));
+        }
 
         var registrations = _handlers.GetOrAdd(header, _ => new ConcurrentDictionary<Guid, NmeaMessageHandler>());
         var registrationId = Guid.NewGuid();
@@ -179,7 +185,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
         return new HandlerRegistration(this, header, registrationId);
     }
 
-    private async Task RunLifecycleAsync(TaskCompletionSource firstConnection, CancellationToken ct)
+    private async Task RunLifecycleAsync(TaskCompletionSource<bool> firstConnection, CancellationToken ct)
     {
         try
         {
@@ -191,7 +197,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
                 {
                     session = await ConnectSessionAsync(ct).ConfigureAwait(false);
                     SetActiveSession(session);
-                    firstConnection.TrySetResult();
+                    firstConnection.TrySetResult(true);
                     Console.WriteLine($"Connected to {_host}:{_port}");
 
                     await ReadIncomingMessagesAsync(session, ct).ConfigureAwait(false);
@@ -285,7 +291,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(_options.ConnectTimeout);
-            await tcpClient.ConnectAsync(_host, _port, timeoutCts.Token).ConfigureAwait(false);
+            await tcpClient.ConnectAsync(_host, _port).WaitAsyncCompat(timeoutCts.Token).ConfigureAwait(false);
             return new ClientSession(tcpClient, _encoding);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -308,7 +314,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
 
             try
             {
-                line = await session.Reader.ReadLineAsync(ct).ConfigureAwait(false);
+                line = await session.Reader.ReadLineAsyncCompat(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -371,7 +377,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
                 signalTask = _connectionAvailable.Task;
             }
 
-            await signalTask.WaitAsync(ct).ConfigureAwait(false);
+            await signalTask.WaitAsyncCompat(ct).ConfigureAwait(false);
         }
 
         throw new OperationCanceledException(ct);
@@ -387,7 +393,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
             }
 
             _activeSession = session;
-            _connectionAvailable.TrySetResult();
+            _connectionAvailable.TrySetResult(true);
         }
     }
 
@@ -447,12 +453,20 @@ public sealed class NmeaTcpClient : INmeaTcpClient
         }
     }
 
-    private static TaskCompletionSource CreateSignal()
+    private static TaskCompletionSource<bool> CreateSignal()
     {
-        return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        return new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
-    private sealed record QueuedMessage(string Sentence);
+    private sealed class QueuedMessage
+    {
+        public QueuedMessage(string sentence)
+        {
+            Sentence = sentence;
+        }
+
+        public string Sentence { get; }
+    }
 
     private sealed class HandlerRegistration : IDisposable
     {
@@ -489,7 +503,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
         {
             Client = client;
             Stream = client.GetStream();
-            Reader = new StreamReader(Stream, encoding, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+            Reader = new StreamReader(Stream, encoding, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
             _writer = new StreamWriter(Stream, encoding, 1024, leaveOpen: true)
             {
                 NewLine = "\r\n",
@@ -514,8 +528,8 @@ public sealed class NmeaTcpClient : INmeaTcpClient
 
                 try
                 {
-                    await _writer.WriteAsync(sentence.AsMemory(), timeoutCts.Token).ConfigureAwait(false);
-                    await _writer.FlushAsync().WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+                    await _writer.WriteAsync(sentence).ConfigureAwait(false);
+                    await _writer.FlushAsync().WaitAsyncCompat(timeoutCts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {

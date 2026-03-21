@@ -17,7 +17,10 @@ public sealed class NmeaMessage
             throw new ArgumentException("The NMEA header must not be null or whitespace.", nameof(header));
         }
 
-        ArgumentNullException.ThrowIfNull(payloadParts);
+        if (payloadParts is null)
+        {
+            throw new ArgumentNullException(nameof(payloadParts));
+        }
 
         if (payloadParts.Any(part => part is null))
         {
