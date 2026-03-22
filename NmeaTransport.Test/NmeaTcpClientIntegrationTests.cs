@@ -204,15 +204,172 @@ public class NmeaTcpClientIntegrationTests
         Assert.Equal(0, Volatile.Read(ref invocationCount));
     }
 
+    [Fact]
+    public async Task Logging_WhenOptionsAreOmitted_DoesNotWriteToConsole()
+    {
+        await using var server = new TestTcpPeerServer();
+        await using var client = CreateClient(server.Port);
+
+        var output = await CaptureConsoleAsync(async () =>
+        {
+            await client.ConnectAsync();
+            await server.WaitForClientAsync();
+            await server.SendLineAsync(NmeaTestSentence.Create("GPGLL,1,2,3"));
+            await WaitForConsoleFlushAsync();
+            await client.DisconnectAsync();
+        });
+
+        Assert.Equal(string.Empty, output);
+    }
+
+    [Fact]
+    public async Task Logging_WhenSetToNull_DoesNotWriteToConsole()
+    {
+        await using var server = new TestTcpPeerServer();
+        await using var client = CreateClient(
+            server.Port,
+            new NmeaTcpClientOptions
+            {
+                EnableLogging = null,
+                ConnectTimeout = TimeSpan.FromMilliseconds(150),
+                ReconnectDelay = TimeSpan.FromMilliseconds(150),
+                WriteTimeout = TimeSpan.FromSeconds(1)
+            });
+
+        var output = await CaptureConsoleAsync(async () =>
+        {
+            await client.ConnectAsync();
+            await server.WaitForClientAsync();
+            await server.SendLineAsync(NmeaTestSentence.Create("GPGLL,1,2,3"));
+            await WaitForConsoleFlushAsync();
+            await client.DisconnectAsync();
+        });
+
+        Assert.Equal(string.Empty, output);
+    }
+
+    [Fact]
+    public async Task Logging_WhenEnabled_WritesConnectionReceiveAndDisconnectMessages()
+    {
+        await using var server = new TestTcpPeerServer();
+        await using var client = CreateClient(
+            server.Port,
+            new NmeaTcpClientOptions
+            {
+                EnableLogging = true,
+                ConnectTimeout = TimeSpan.FromMilliseconds(150),
+                ReconnectDelay = TimeSpan.FromMilliseconds(150),
+                WriteTimeout = TimeSpan.FromSeconds(1)
+            });
+
+        var sentence = NmeaTestSentence.Create("GPGLL,1,2,3");
+        var output = await CaptureConsoleAsync(async () =>
+        {
+            await client.ConnectAsync();
+            await server.WaitForClientAsync();
+            await server.SendLineAsync(sentence);
+            await WaitForConsoleFlushAsync();
+            await server.DisconnectClientAsync();
+            await WaitForConsoleFlushAsync();
+            await client.DisconnectAsync();
+        });
+
+        Assert.Contains($"Connected to 127.0.0.1:{server.Port}", output);
+        Assert.Contains($"RX: {sentence}", output);
+        Assert.Contains("Disconnected from server.", output);
+    }
+
+    [Fact]
+    public async Task Logging_WhenEnabled_WritesHandlerErrorsToConsole()
+    {
+        await using var server = new TestTcpPeerServer();
+        await using var client = CreateClient(
+            server.Port,
+            new NmeaTcpClientOptions
+            {
+                EnableLogging = true,
+                ConnectTimeout = TimeSpan.FromMilliseconds(150),
+                ReconnectDelay = TimeSpan.FromMilliseconds(150),
+                WriteTimeout = TimeSpan.FromSeconds(1)
+            });
+
+        using var registration = client.RegisterHandler("GPGLL", (_, _) =>
+        {
+            throw new InvalidOperationException("boom");
+        });
+
+        var output = await CaptureConsoleAsync(async () =>
+        {
+            await client.ConnectAsync();
+            await server.WaitForClientAsync();
+            await server.SendLineAsync(NmeaTestSentence.Create("GPGLL,1,2,3"));
+            await WaitForConsoleFlushAsync();
+            await client.DisconnectAsync();
+        });
+
+        Assert.Contains("Handler error for header 'GPGLL': boom", output);
+    }
+
+    [Fact]
+    public async Task Logging_WhenEnabled_WritesInvalidSentenceDiscardedMessage()
+    {
+        await using var server = new TestTcpPeerServer();
+        await using var client = CreateClient(
+            server.Port,
+            new NmeaTcpClientOptions
+            {
+                EnableLogging = true,
+                ValidateChecksum = true,
+                ConnectTimeout = TimeSpan.FromMilliseconds(150),
+                ReconnectDelay = TimeSpan.FromMilliseconds(150),
+                WriteTimeout = TimeSpan.FromSeconds(1)
+            });
+
+        var output = await CaptureConsoleAsync(async () =>
+        {
+            await client.ConnectAsync();
+            await server.WaitForClientAsync();
+            await server.SendLineAsync("$GPGLL,4916.45,N,12311.12,W,225444,A,*00");
+            await WaitForConsoleFlushAsync();
+            await client.DisconnectAsync();
+        });
+
+        Assert.Contains("Invalid NMEA sentence discarded:", output);
+        Assert.Contains("Raw='$GPGLL,4916.45,N,12311.12,W,225444,A,*00'", output);
+    }
+
     private static NmeaTcpClient CreateClient(int port, NmeaTcpClientOptions? options = null)
     {
         return new NmeaTcpClient("127.0.0.1", port, options);
+    }
+
+    private static async Task<string> CaptureConsoleAsync(Func<Task> action)
+    {
+        var originalOut = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        try
+        {
+            await action();
+            await writer.FlushAsync();
+            return writer.ToString();
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
     }
 
     private static async Task WaitForSignalAsync(SemaphoreSlim semaphore)
     {
         var acquired = await semaphore.WaitAsync(TimeSpan.FromSeconds(3));
         Assert.True(acquired, "Expected client handler to receive the message within the timeout.");
+    }
+
+    private static Task WaitForConsoleFlushAsync()
+    {
+        return Task.Delay(150);
     }
 
     private static async Task WaitForDeliveryAfterReconnectAsync(

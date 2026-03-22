@@ -28,6 +28,7 @@ using NmeaTransport.Clients;
 
 var options = new NmeaTcpClientOptions
 {
+    EnableLogging = true,
     ValidateChecksum = true,
     ReconnectDelay = TimeSpan.FromSeconds(2),
     ConnectTimeout = TimeSpan.FromSeconds(1),
@@ -57,6 +58,8 @@ await client.DisconnectAsync();
 - `DisconnectAsync()` stops the lifecycle and prevents further reconnect attempts.
 - `SendAsync()` serializes the message as a NMEA sentence with checksum.
 - `RegisterHandler()` routes incoming messages by header and returns an `IDisposable` to unregister.
+- `EnableLogging` controls whether the client writes lifecycle, RX, and error messages to the terminal.
+- `EnableLogging` defaults to `false`; `null` also keeps terminal logging disabled.
 - When disconnected unexpectedly, the client keeps retrying based on `ReconnectDelay`.
 - Outgoing messages remain queued and are flushed after reconnection.
 
@@ -89,7 +92,7 @@ await runTask;
 
 - `NmeaTcpClient`: main client implementation
 - `INmeaTcpClient`: public client contract
-- `NmeaTcpClientOptions`: checksum, reconnect, connect timeout, and write timeout settings
+- `NmeaTcpClientOptions`: logging, checksum, reconnect, connect timeout, and write timeout settings
 - `NmeaMessage`: structured header + payload representation
 - `NmeaTcpServer`: lightweight TCP relay for valid NMEA sentences
 

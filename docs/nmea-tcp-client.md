@@ -15,6 +15,7 @@
   - `Header`
   - `PayloadParts`
 - `NmeaTcpClientOptions`
+  - `EnableLogging`
   - `ValidateChecksum`
   - `ReconnectDelay`
   - `ConnectTimeout`
@@ -25,9 +26,11 @@
 - Em caso de queda, o cliente tenta reconectar indefinidamente enquanto nao houver `DisconnectAsync`.
 - Mensagens enviadas durante desconexao sao mantidas em fila e reenviadas depois da reconexao.
 - Handlers registrados por `Header` permanecem ativos durante todo o ciclo de vida da instancia.
+- `EnableLogging` controla os logs de ciclo de vida, RX e erro no terminal.
+- `EnableLogging` tem default `false`; `null` tambem desabilita logging no terminal.
 - A validacao obrigatoria sempre verifica o prefixo NMEA (`$` ou `!`).
 - A validacao de checksum e opcional e controlada por `ValidateChecksum`.
-- Mensagens invalidas sao descartadas e registradas no `Console`.
+- Mensagens invalidas sao descartadas e so sao registradas no `Console` quando `EnableLogging` estiver habilitado.
 
 ## Exemplo de uso
 ```csharp
@@ -38,6 +41,7 @@ var client = new NmeaTcpClient(
     5000,
     new NmeaTcpClientOptions
     {
+        EnableLogging = true,
         ValidateChecksum = true,
         ReconnectDelay = TimeSpan.FromSeconds(2),
         ConnectTimeout = TimeSpan.FromSeconds(1),

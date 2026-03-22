@@ -174,3 +174,59 @@ internal sealed class RawTcpClient : IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 }
+
+internal sealed class TestTcpPeerServer : IAsyncDisposable
+{
+    private readonly TcpListener _listener;
+    private readonly Task<TcpClient> _acceptTask;
+    private TcpClient? _acceptedClient;
+    private StreamWriter? _writer;
+
+    public TestTcpPeerServer()
+    {
+        _listener = new TcpListener(IPAddress.Loopback, 0);
+        _listener.Start();
+        Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+        _acceptTask = _listener.AcceptTcpClientAsync();
+    }
+
+    public int Port { get; }
+
+    public async Task WaitForClientAsync()
+    {
+        if (_acceptedClient is not null)
+        {
+            return;
+        }
+
+        _acceptedClient = await _acceptTask.ConfigureAwait(false);
+        _writer = new StreamWriter(_acceptedClient.GetStream(), Encoding.ASCII, 1024, leaveOpen: true)
+        {
+            NewLine = "\r\n",
+            AutoFlush = true
+        };
+    }
+
+    public async Task SendLineAsync(string line)
+    {
+        await WaitForClientAsync().ConfigureAwait(false);
+        await _writer!.WriteLineAsync(line).ConfigureAwait(false);
+    }
+
+    public async Task DisconnectClientAsync()
+    {
+        await WaitForClientAsync().ConfigureAwait(false);
+        _writer?.Dispose();
+        _acceptedClient?.Dispose();
+        _writer = null;
+        _acceptedClient = null;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _writer?.Dispose();
+        _acceptedClient?.Dispose();
+        _listener.Stop();
+        return ValueTask.CompletedTask;
+    }
+}
