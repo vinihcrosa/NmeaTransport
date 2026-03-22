@@ -141,6 +141,8 @@ public class NmeaTcpServerIntegrationTests
         {
             var client = new TcpClient();
             await client.ConnectAsync(IPAddress.Loopback, Server.Port);
+            await WaitForClientCountAsync(_testClientsCreated + 1);
+            _testClientsCreated++;
             return new TestClient(client);
         }
 
@@ -176,6 +178,18 @@ public class NmeaTcpServerIntegrationTests
                 {
                     throw new TimeoutException($"Server did not start listening on port {Server.Port} within the expected time.");
                 }
+            }
+        }
+
+        private int _testClientsCreated;
+
+        private async Task WaitForClientCountAsync(int expectedCount)
+        {
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+
+            while (Server.ConnectedClientCount < expectedCount)
+            {
+                await Task.Delay(25, timeoutCts.Token);
             }
         }
 
