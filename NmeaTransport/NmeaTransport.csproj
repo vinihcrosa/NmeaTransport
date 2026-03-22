@@ -12,6 +12,11 @@
         <Description>A simple NMEA transport library for .NET</Description>
         <PackageDescription>A simple NMEA transport library for .NET</PackageDescription>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/vinihcrosa/NmeaTransport</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/vinihcrosa/NmeaTransport</PackageProjectUrl>
+        <PackageTags>NMEA;Transport;Serial;TCP;UDP</PackageTags>
+        <Title>NmeaTransport</Title>
+        <Summary>A simple NMEA transport library for .NET</Summary>
     </PropertyGroup>
 
     <ItemGroup>
