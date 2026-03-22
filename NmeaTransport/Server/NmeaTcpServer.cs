@@ -129,9 +129,11 @@ public sealed class NmeaTcpServer : IAsyncDisposable
 
     internal static bool IsValidSentence(string? sentence)
     {
-        return NmeaSentence.HasValidPrefix(sentence) &&
-               sentence!.Length >= 2 &&
-               (!sentence.Contains('*') || NmeaSentence.ValidateChecksum(sentence));
+        return NmeaSentence.TryParse(
+            sentence,
+            validateChecksum: sentence?.Contains('*') == true,
+            out _,
+            out _);
     }
 
     private void RegisterClient(TcpClient tcpClient, CancellationToken ct)

@@ -9,47 +9,52 @@ internal static class NmeaSentence
 
     internal static bool HasValidPrefix(string? sentence)
     {
-        return !string.IsNullOrWhiteSpace(sentence) &&
-               ValidInitializers.Contains(sentence[0]);
+        var normalizedSentence = NormalizeLeadingNoise(sentence);
+        return !string.IsNullOrWhiteSpace(normalizedSentence) &&
+               ValidInitializers.Contains(normalizedSentence[0]);
     }
 
     internal static bool ValidateChecksum(string sentence)
     {
-        if (!HasValidPrefix(sentence))
+        var normalizedSentence = NormalizeLeadingNoise(sentence);
+
+        if (!HasValidPrefix(normalizedSentence))
         {
             return false;
         }
 
-        var asterisk = sentence.IndexOf('*');
+        var asterisk = normalizedSentence!.IndexOf('*');
 
-        if (asterisk <= 1 || asterisk != sentence.Length - 3)
+        if (asterisk <= 1 || asterisk != normalizedSentence.Length - 3)
         {
             return false;
         }
 
-        var checksumText = sentence[(asterisk + 1)..];
+        var checksumText = normalizedSentence[(asterisk + 1)..];
 
         if (!byte.TryParse(checksumText, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var expectedChecksum))
         {
             return false;
         }
 
-        return CalculateChecksum(sentence.AsSpan(1, asterisk - 1)) == expectedChecksum;
+        return CalculateChecksum(normalizedSentence.AsSpan(1, asterisk - 1)) == expectedChecksum;
     }
 
     internal static bool IsValidSentence(string? sentence, bool validateChecksum)
     {
-        if (!HasValidPrefix(sentence))
+        var normalizedSentence = NormalizeLeadingNoise(sentence);
+
+        if (!HasValidPrefix(normalizedSentence))
         {
             return false;
         }
 
-        if (sentence!.Length < 2)
+        if (normalizedSentence!.Length < 2)
         {
             return false;
         }
 
-        return !validateChecksum || ValidateChecksum(sentence);
+        return !validateChecksum || ValidateChecksum(normalizedSentence);
     }
 
     internal static string Serialize(NmeaMessage message)
@@ -70,7 +75,9 @@ internal static class NmeaSentence
         out NmeaMessage? message,
         out string? error)
     {
-        if (!IsValidSentence(sentence, validateChecksum))
+        var normalizedSentence = NormalizeLeadingNoise(sentence);
+
+        if (!IsValidSentence(normalizedSentence, validateChecksum))
         {
             message = null;
             error = validateChecksum
@@ -79,7 +86,7 @@ internal static class NmeaSentence
             return false;
         }
 
-        var body = ExtractBody(sentence!);
+        var body = ExtractBody(normalizedSentence!);
 
         if (body.Length == 0)
         {
@@ -109,6 +116,17 @@ internal static class NmeaSentence
         var asteriskIndex = sentence.IndexOf('*');
         var bodyLength = (asteriskIndex >= 0 ? asteriskIndex : sentence.Length) - 1;
         return bodyLength <= 0 ? string.Empty : sentence.Substring(1, bodyLength);
+    }
+
+    private static string? NormalizeLeadingNoise(string? sentence)
+    {
+        if (string.IsNullOrWhiteSpace(sentence))
+        {
+            return sentence;
+        }
+
+        var startIndex = sentence.IndexOfAny(ValidInitializers);
+        return startIndex < 0 ? sentence : sentence[startIndex..];
     }
 
     private static int CalculateChecksum(ReadOnlySpan<char> body)

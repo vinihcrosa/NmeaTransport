@@ -8,6 +8,7 @@ public class NmeaSentenceTests
     [Theory]
     [InlineData("$GPGLL,4916.45,N,12311.12,W,225444,A")]
     [InlineData("!AIVDM,1,1,,A,15MvqR0P00PD;88MD5MTDwvN0<0u,0*4D")]
+    [InlineData("  20$TESTE,teste,16*27")]
     public void HasValidPrefix_AcceptsSupportedPrefixes(string sentence)
     {
         Assert.True(NmeaSentence.HasValidPrefix(sentence));
@@ -47,6 +48,20 @@ public class NmeaSentenceTests
         Assert.True(parsed);
         Assert.Null(error);
         Assert.NotNull(message);
+    }
+
+    [Fact]
+    public void TryParse_IgnoresLeadingNoiseBeforeSentencePrefix()
+    {
+        const string sentence = "  20$TESTE,teste,16*27";
+
+        var parsed = NmeaSentence.TryParse(sentence, validateChecksum: true, out var message, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.NotNull(message);
+        Assert.Equal("TESTE", message!.Header);
+        Assert.Equal(["teste", "16"], message.PayloadParts);
     }
 
     [Fact]
