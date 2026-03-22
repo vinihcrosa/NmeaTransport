@@ -6,6 +6,12 @@ on:
       - closed
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to publish
+        required: false
+        default: main
 
 permissions:
   contents: write
@@ -15,15 +21,26 @@ permissions:
 jobs:
   publish:
     if: >
-      github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.merged == true &&
+        startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Checkout merged release commit
+        if: github.event_name == 'pull_request'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Checkout selected ref
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -48,12 +65,15 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
-      - name: Fail if tag already exists
+      - name: Detect existing tag
+        id: tag-state
         shell: bash
         run: |
           if git rev-parse "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "Tag ${{ steps.version.outputs.tag }} already exists" >&2
-            exit 1
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.version.outputs.tag }} already exists."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Restore dependencies
@@ -89,11 +109,15 @@ jobs:
           ' CHANGELOG.md > release-notes.md
 
           if [[ ! -s release-notes.md ]]; then
-            echo "Could not extract changelog section for version $version" >&2
-            exit 1
+            {
+              echo "## [$version]"
+              echo
+              echo "Automated release for version $version."
+            } > release-notes.md
           fi
 
       - name: Create git tag
+        if: steps.tag-state.outputs.exists != 'true'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
@@ -101,7 +125,21 @@ jobs:
           git tag "${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
 
+      - name: Detect existing GitHub release
+        id: release-state
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "GitHub release ${{ steps.version.outputs.tag }} already exists."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub release
+        if: steps.release-state.outputs.exists != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -110,13 +148,22 @@ jobs:
             --notes-file release-notes.md \
             ./artifacts/*.nupkg
 
+      - name: Upload package asset to existing GitHub release
+        if: steps.release-state.outputs.exists == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ steps.version.outputs.tag }}" ./artifacts/*.nupkg --clobber
+
       - name: Publish package to NuGet
         run: |
           dotnet nuget push "./artifacts/*.nupkg" \
             --api-key "${{ secrets.NUGET_TOKEN }}" \
-            --source https://api.nuget.org/v3/index.json
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
 
       - name: Mark release PR as tagged
+        if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
