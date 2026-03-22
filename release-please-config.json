@@ -4,7 +4,6 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "package-name": "NmeaTransport",
       "include-v-in-tag": true,
       "changelog-path": "CHANGELOG.md",
       "changelog-sections": [
