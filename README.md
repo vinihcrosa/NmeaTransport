@@ -107,6 +107,17 @@ dotnet test NmeaTransport.sln --no-build --configuration Release
 dotnet format NmeaTransport.sln --verify-no-changes
 ```
 
+## Branching
+
+The repository adopts Gitflow-style working branches for implementation work.
+
+- `feature/<short-name>` for new features
+- `fix/<short-name>` for bug fixes that do not require emergency release handling
+- `hotfix/<short-name>` for urgent production fixes when applicable
+- `release/<short-name>` for release-oriented branches when the workflow requires it
+
+Prefer opening pull requests to `main` from one of these branch types. For new development tasks in this repository, default to `feature/...` unless the nature of the change clearly fits another type.
+
 ## CI and merge protection
 
 Pull requests targeting `main` run a single required GitHub Actions workflow (for example, **Build and test**) that contains a job named `ci`. That job restores, builds, tests, and validates formatting with `dotnet format --verify-no-changes`.
