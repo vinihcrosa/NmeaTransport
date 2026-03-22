@@ -2,12 +2,15 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using NmeaTransport.Clients;
 using NmeaTransport.Internal;
 
 namespace NmeaTransport.Server;
 
 public sealed class NmeaTcpServer : IAsyncDisposable
 {
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, NmeaMessageHandler>> _handlers =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly object _stateLock = new();
     private readonly ConcurrentDictionary<int, ClientConnection> _clients = new();
     private readonly List<Task> _clientTasks = new();
@@ -117,6 +120,46 @@ public sealed class NmeaTcpServer : IAsyncDisposable
         await StopAsync().ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Sends a structured NMEA message to all connected TCP clients.
+    /// </summary>
+    /// <param name="message">The message to broadcast.</param>
+    /// <param name="ct">A token used to cancel the send operation.</param>
+    public Task SendAsync(NmeaMessage message, CancellationToken ct = default)
+    {
+        if (message is null)
+        {
+            throw new ArgumentNullException(nameof(message));
+        }
+
+        return BroadcastAsync(NmeaSentence.Serialize(message), ct);
+    }
+
+    /// <summary>
+    /// Registers an asynchronous handler for a specific NMEA header.
+    /// </summary>
+    /// <param name="header">The NMEA header to route to.</param>
+    /// <param name="handler">The handler to invoke for matching messages.</param>
+    /// <returns>An <see cref="IDisposable"/> that unregisters the handler when disposed.</returns>
+    public IDisposable RegisterHandler(string header, NmeaMessageHandler handler)
+    {
+        if (string.IsNullOrWhiteSpace(header))
+        {
+            throw new ArgumentException("The header must not be null or whitespace.", nameof(header));
+        }
+
+        if (handler is null)
+        {
+            throw new ArgumentNullException(nameof(handler));
+        }
+
+        var registrations = _handlers.GetOrAdd(header, _ => new ConcurrentDictionary<Guid, NmeaMessageHandler>());
+        var registrationId = Guid.NewGuid();
+        registrations[registrationId] = handler;
+
+        return new HandlerRegistration(this, header, registrationId);
+    }
+
     internal static bool HasValidNmeaPrefix(string? sentence)
     {
         return NmeaSentence.HasValidPrefix(sentence);
@@ -178,12 +221,17 @@ public sealed class NmeaTcpServer : IAsyncDisposable
                     break;
                 }
 
-                if (!IsValidSentence(line))
+                if (!NmeaSentence.TryParse(
+                    line,
+                    validateChecksum: line.Contains('*'),
+                    out var message,
+                    out _))
                 {
                     continue;
                 }
 
                 Console.WriteLine($"RX ({connection.Id}): {line}");
+                await DispatchAsync(message!, ct).ConfigureAwait(false);
                 await BroadcastAsync(line, ct).ConfigureAwait(false);
             }
         }
@@ -204,6 +252,30 @@ public sealed class NmeaTcpServer : IAsyncDisposable
         {
             RemoveClient(connection);
             Console.WriteLine($"Client disconnected ({connection.Id})");
+        }
+    }
+
+    private async Task DispatchAsync(NmeaMessage message, CancellationToken ct)
+    {
+        if (!_handlers.TryGetValue(message.Header, out var registrations) || registrations.IsEmpty)
+        {
+            return;
+        }
+
+        foreach (var handler in registrations.Values)
+        {
+            try
+            {
+                await handler(message, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine($"Handler error for header '{message.Header}': {exception.Message}");
+            }
         }
     }
 
@@ -304,6 +376,46 @@ public sealed class NmeaTcpServer : IAsyncDisposable
         if (_clients.TryRemove(connection.Id, out _))
         {
             connection.Dispose();
+        }
+    }
+
+    private void RemoveHandler(string header, Guid registrationId)
+    {
+        if (!_handlers.TryGetValue(header, out var registrations))
+        {
+            return;
+        }
+
+        registrations.TryRemove(registrationId, out _);
+
+        if (registrations.IsEmpty)
+        {
+            _handlers.TryRemove(header, out _);
+        }
+    }
+
+    private sealed class HandlerRegistration : IDisposable
+    {
+        private readonly NmeaTcpServer _owner;
+        private readonly string _header;
+        private readonly Guid _registrationId;
+        private int _disposed;
+
+        public HandlerRegistration(NmeaTcpServer owner, string header, Guid registrationId)
+        {
+            _owner = owner;
+            _header = header;
+            _registrationId = registrationId;
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            {
+                return;
+            }
+
+            _owner.RemoveHandler(_header, _registrationId);
         }
     }
 
