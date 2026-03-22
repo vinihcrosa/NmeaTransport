@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
 
 jobs:
   publish:
@@ -113,3 +115,15 @@ jobs:
           dotnet nuget push "./artifacts/*.nupkg" \
             --api-key "${{ secrets.NUGET_TOKEN }}" \
             --source https://api.nuget.org/v3/index.json
+
+      - name: Mark release PR as tagged
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh label list --search "autorelease: tagged" --json name --jq '.[].name' | grep -Fxq "autorelease: tagged"; then
+            gh label create "autorelease: tagged" --color "0e8a16" --description "Release PR already tagged and published"
+          fi
+
+          gh pr edit "${{ github.event.pull_request.number }}" \
+            --remove-label "autorelease: pending" \
+            --add-label "autorelease: tagged"
