@@ -130,6 +130,7 @@ public class NmeaTcpClientIntegrationTests
         await client.SendAsync(new NmeaMessage("GPRMC", ["1", "2", "3"]));
 
         await harness.StartAsync();
+        await harness.WaitForConnectedClientCountAsync(1);
         var received = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal("GPRMC", received.Header);

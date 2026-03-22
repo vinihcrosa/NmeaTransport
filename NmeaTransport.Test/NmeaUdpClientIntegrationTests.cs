@@ -11,7 +11,7 @@ public class NmeaUdpClientIntegrationTests
     [Fact]
     public async Task SendAsync_ForwardsStructuredSentenceToDirectedEndpoint()
     {
-        await using var receiver = new RawUdpPeer();
+        await using var receiver = new RawUdpPeer(bindAddress: IPAddress.Loopback);
         await using var client = CreateClient(receiver.Port);
 
         await client.ConnectAsync();
@@ -25,7 +25,7 @@ public class NmeaUdpClientIntegrationTests
     [Fact]
     public async Task SendAsync_UsesDefaultRemoteEndpointWhenConfigured()
     {
-        await using var receiver = new RawUdpPeer();
+        await using var receiver = new RawUdpPeer(bindAddress: IPAddress.Loopback);
         await using var client = CreateClient(
             GetFreePort(),
             new NmeaUdpClientOptions
@@ -56,7 +56,7 @@ public class NmeaUdpClientIntegrationTests
     [Fact]
     public async Task RegisterHandler_RoutesIncomingMessageByHeader()
     {
-        await using var sender = new RawUdpPeer();
+        await using var sender = new RawUdpPeer(bindAddress: IPAddress.Loopback);
         var port = GetFreePort();
         await using var client = CreateClient(port);
         var receivedMessage = new TaskCompletionSource<NmeaMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -79,7 +79,7 @@ public class NmeaUdpClientIntegrationTests
     [Fact]
     public async Task ChecksumValidation_WhenEnabled_DiscardsInvalidSentence()
     {
-        await using var sender = new RawUdpPeer();
+        await using var sender = new RawUdpPeer(bindAddress: IPAddress.Loopback);
         var port = GetFreePort();
         await using var client = CreateClient(
             port,
@@ -140,7 +140,7 @@ public class NmeaUdpClientIntegrationTests
     [Fact]
     public async Task HandlerErrors_AreLoggedAndDoNotStopFutureReceives()
     {
-        await using var sender = new RawUdpPeer();
+        await using var sender = new RawUdpPeer(bindAddress: IPAddress.Loopback);
         var port = GetFreePort();
         await using var client = CreateClient(
             port,
@@ -182,7 +182,7 @@ public class NmeaUdpClientIntegrationTests
     [Fact]
     public async Task Logging_WhenEnabled_WritesLifecycleReceiveAndInvalidSentenceMessages()
     {
-        await using var sender = new RawUdpPeer();
+        await using var sender = new RawUdpPeer(bindAddress: IPAddress.Loopback);
         var port = GetFreePort();
         await using var client = CreateClient(
             port,
