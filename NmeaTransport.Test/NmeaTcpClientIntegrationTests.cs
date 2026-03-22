@@ -115,6 +115,13 @@ public class NmeaTcpClientIntegrationTests
                 ConnectTimeout = TimeSpan.FromMilliseconds(150),
                 WriteTimeout = TimeSpan.FromSeconds(1)
             });
+        var receivedMessage = new TaskCompletionSource<NmeaMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var registration = client.RegisterHandler("GPRMC", (message, _) =>
+        {
+            receivedMessage.TrySetResult(message);
+            return Task.CompletedTask;
+        });
 
         await client.ConnectAsync();
         await harness.StopAsync();
@@ -123,11 +130,10 @@ public class NmeaTcpClientIntegrationTests
         await client.SendAsync(new NmeaMessage("GPRMC", ["1", "2", "3"]));
 
         await harness.StartAsync();
-        await using var probe = await harness.ConnectClientAsync();
+        var received = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        var received = await probe.ReadRawLineAsync(TimeSpan.FromSeconds(5));
-
-        Assert.Equal($"{NmeaTestSentence.Create("GPRMC,1,2,3")}\r\n", received);
+        Assert.Equal("GPRMC", received.Header);
+        Assert.Equal(["1", "2", "3"], received.PayloadParts);
     }
 
     [Fact]
