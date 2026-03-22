@@ -17,6 +17,7 @@
         <PackageTags>NMEA;Transport;Serial;TCP;UDP</PackageTags>
         <Title>NmeaTransport</Title>
         <Summary>A simple NMEA transport library for .NET</Summary>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>
