@@ -71,7 +71,12 @@ The server listens for TCP clients, accepts valid NMEA sentences, and broadcasts
 ```csharp
 using NmeaTransport.Server;
 
-await using var server = new NmeaTcpServer(10110);
+var options = new NmeaTcpServerOptions
+{
+    EnableLogging = true
+};
+
+await using var server = new NmeaTcpServer(10110, options);
 using var cts = new CancellationTokenSource();
 
 var runTask = server.StartAsync(cts.Token);
@@ -88,6 +93,8 @@ await runTask;
 - ignores invalid or malformed input
 - validates checksum when the incoming sentence includes one
 - broadcasts valid sentences to all connected clients
+- `EnableLogging` controls whether the server writes lifecycle, RX, and error messages to the terminal
+- `EnableLogging` defaults to `false`; `null` also keeps terminal logging disabled
 
 ## Core types
 

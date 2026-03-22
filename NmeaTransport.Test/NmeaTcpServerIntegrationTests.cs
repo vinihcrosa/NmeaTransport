@@ -9,6 +9,83 @@ namespace NmeaTransport.Test;
 public class NmeaTcpServerIntegrationTests
 {
     [Fact]
+    public async Task Logging_WithoutOptions_DoesNotWriteToConsole()
+    {
+        var output = await CaptureConsoleAsync(async () =>
+        {
+            await using var harness = await ServerHarness.StartAsync();
+            await using var sender = await harness.ConnectClientAsync();
+
+            await sender.SendLineAsync("$GPGLL,4916.45,N,12311.12,W,225444,A,*1D");
+            await WaitForConsoleFlushAsync();
+        });
+
+        Assert.Equal(string.Empty, output);
+    }
+
+    [Fact]
+    public async Task Logging_WhenSetToNull_DoesNotWriteToConsole()
+    {
+        var output = await CaptureConsoleAsync(async () =>
+        {
+            await using var harness = await ServerHarness.StartAsync(new NmeaTcpServerOptions
+            {
+                EnableLogging = null
+            });
+            await using var sender = await harness.ConnectClientAsync();
+
+            await sender.SendLineAsync("$GPGLL,4916.45,N,12311.12,W,225444,A,*1D");
+            await WaitForConsoleFlushAsync();
+        });
+
+        Assert.Equal(string.Empty, output);
+    }
+
+    [Fact]
+    public async Task Logging_WhenEnabled_WritesStartConnectionReceiveAndDisconnectMessages()
+    {
+        var output = await CaptureConsoleAsync(async () =>
+        {
+            await using var harness = await ServerHarness.StartAsync(new NmeaTcpServerOptions
+            {
+                EnableLogging = true
+            });
+            await using var sender = await harness.ConnectClientAsync();
+
+            await sender.SendLineAsync("$GPGLL,4916.45,N,12311.12,W,225444,A,*1D");
+            await WaitForConsoleFlushAsync();
+        });
+
+        Assert.Contains($"NMEA TCP Server started on port", output);
+        Assert.Contains("Client connected (", output);
+        Assert.Contains("RX (", output);
+        Assert.Contains("Client disconnected (", output);
+    }
+
+    [Fact]
+    public async Task Logging_WhenEnabled_WritesHandlerErrorsToConsole()
+    {
+        var output = await CaptureConsoleAsync(async () =>
+        {
+            await using var harness = await ServerHarness.StartAsync(new NmeaTcpServerOptions
+            {
+                EnableLogging = true
+            });
+            await using var sender = await harness.ConnectClientAsync();
+
+            using var registration = harness.Server.RegisterHandler("GPGLL", (_, _) =>
+            {
+                throw new InvalidOperationException("boom");
+            });
+
+            await sender.SendLineAsync("$GPGLL,4916.45,N,12311.12,W,225444,A,*1D");
+            await WaitForConsoleFlushAsync();
+        });
+
+        Assert.Contains("Handler error for header 'GPGLL': boom", output);
+    }
+
+    [Fact]
     public async Task BroadcastAsync_ForwardsValidSentenceToConnectedClients()
     {
         await using var harness = await ServerHarness.StartAsync();
@@ -236,10 +313,15 @@ public class NmeaTcpServerIntegrationTests
         public NmeaTcpServer Server { get; }
         public Task ServerTask { get; }
 
-        public static async Task<ServerHarness> StartAsync()
+        public static Task<ServerHarness> StartAsync()
+        {
+            return StartAsync(options: null);
+        }
+
+        public static async Task<ServerHarness> StartAsync(NmeaTcpServerOptions? options)
         {
             var port = GetFreePort();
-            var server = new NmeaTcpServer(port);
+            var server = new NmeaTcpServer(port, options);
             var harness = new ServerHarness(server, server.StartAsync());
 
             await harness.WaitUntilListeningAsync();
@@ -373,5 +455,28 @@ public class NmeaTcpServerIntegrationTests
             _client.Dispose();
             return ValueTask.CompletedTask;
         }
+    }
+
+    private static async Task<string> CaptureConsoleAsync(Func<Task> action)
+    {
+        var originalOut = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        try
+        {
+            await action();
+            await writer.FlushAsync();
+            return writer.ToString();
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+    }
+
+    private static Task WaitForConsoleFlushAsync()
+    {
+        return Task.Delay(150);
     }
 }

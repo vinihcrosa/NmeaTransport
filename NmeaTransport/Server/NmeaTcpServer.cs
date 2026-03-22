@@ -16,6 +16,7 @@ public sealed class NmeaTcpServer : IAsyncDisposable
     private readonly TcpListener _listener;
     private readonly Encoding _encoding = Encoding.ASCII;
     private readonly int _port;
+    private readonly NmeaTcpServerOptions _options;
 
     private CancellationTokenSource? _lifecycleCts;
     private bool _isRunning;
@@ -25,9 +26,11 @@ public sealed class NmeaTcpServer : IAsyncDisposable
     /// Creates a new instance of <see cref="NmeaTcpServer"/>.
     /// </summary>
     /// <param name="port">The TCP port to listen on.</param>
-    public NmeaTcpServer(int port)
+    /// <param name="options">Optional runtime configuration.</param>
+    public NmeaTcpServer(int port, NmeaTcpServerOptions? options = null)
     {
         _port = port;
+        _options = options ?? new NmeaTcpServerOptions();
         _listener = new TcpListener(IPAddress.Any, port);
     }
 
@@ -57,7 +60,7 @@ public sealed class NmeaTcpServer : IAsyncDisposable
         }
 
         _listener.Start();
-        Console.WriteLine($"NMEA TCP Server started on port {_port}...");
+        Log($"NMEA TCP Server started on port {_port}...");
         var lifecycleToken = lifecycleCts.Token;
 
         try
@@ -177,7 +180,7 @@ public sealed class NmeaTcpServer : IAsyncDisposable
             throw new InvalidOperationException("Failed to track connected client.");
         }
 
-        Console.WriteLine($"Client connected ({clientId})");
+        Log($"Client connected ({clientId})");
 
         var task = HandleClientAsync(connection, ct);
 
@@ -215,7 +218,7 @@ public sealed class NmeaTcpServer : IAsyncDisposable
                     continue;
                 }
 
-                Console.WriteLine($"RX ({connection.Id}): {line}");
+                Log($"RX ({connection.Id}): {line}");
                 await DispatchAsync(message!, ct).ConfigureAwait(false);
                 await BroadcastAsync(line, ct).ConfigureAwait(false);
             }
@@ -231,18 +234,18 @@ public sealed class NmeaTcpServer : IAsyncDisposable
         }
         catch (Exception exception)
         {
-            Console.WriteLine($"Client error ({connection.Id}): {exception.Message}");
+            Log($"Client error ({connection.Id}): {exception.Message}");
         }
         finally
         {
             RemoveClient(connection);
-            Console.WriteLine($"Client disconnected ({connection.Id})");
+            Log($"Client disconnected ({connection.Id})");
         }
     }
 
     private async Task DispatchAsync(NmeaMessage message, CancellationToken ct)
     {
-        await _handlers.DispatchAsync(message, ct, Console.WriteLine).ConfigureAwait(false);
+        await _handlers.DispatchAsync(message, ct, Log).ConfigureAwait(false);
     }
 
     private async Task BroadcastAsync(string message, CancellationToken ct)
@@ -333,7 +336,15 @@ public sealed class NmeaTcpServer : IAsyncDisposable
 
         if (completedTask.IsFaulted)
         {
-            Console.WriteLine($"Client task faulted ({connection.Id}): {completedTask.Exception?.GetBaseException().Message}");
+            Log($"Client task faulted ({connection.Id}): {completedTask.Exception?.GetBaseException().Message}");
+        }
+    }
+
+    private void Log(string message)
+    {
+        if (_options.EnableLogging == true)
+        {
+            Console.WriteLine(message);
         }
     }
 
