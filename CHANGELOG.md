@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/vinihcrosa/NmeaTransport/compare/v0.3.0...v0.4.0) (2026-03-22)
+
+
+### Features
+
+* **server:** add logging options to NmeaTcpServer ([3cb7637](https://github.com/vinihcrosa/NmeaTransport/commit/3cb7637126579322579646a2cce26d88a4a1a8a5))
+* **server:** add logging options to NmeaTcpServer ([79d3d9d](https://github.com/vinihcrosa/NmeaTransport/commit/79d3d9db7e019992583b1d1e68299c9233841ba8))
+
 ## [0.3.0](https://github.com/vinihcrosa/NmeaTransport/compare/v0.2.0...v0.3.0) (2026-03-22)
 
 
