@@ -9,7 +9,7 @@ on:
       - main
 
 jobs:
-  build:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,13 +17,16 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          global-json-file: global.json
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore NmeaTransport.sln
 
       - name: Build
-        run: dotnet build --no-restore --configuration Release
+        run: dotnet build NmeaTransport.sln --no-restore --configuration Release
 
       - name: Run tests
-        run: dotnet test --no-build --configuration Release --verbosity normal
+        run: dotnet test NmeaTransport.sln --no-build --configuration Release --verbosity normal
+
+      - name: Verify formatting
+        run: dotnet format NmeaTransport.sln --verify-no-changes

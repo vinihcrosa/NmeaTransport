@@ -101,10 +101,22 @@ await runTask;
 Build and test locally with:
 
 ```bash
-dotnet restore
-dotnet build --configuration Release
-dotnet test --configuration Release
+dotnet restore NmeaTransport.sln
+dotnet build NmeaTransport.sln --no-restore --configuration Release
+dotnet test NmeaTransport.sln --no-build --configuration Release
+dotnet format NmeaTransport.sln --verify-no-changes
 ```
+
+## CI and merge protection
+
+Pull requests targeting `main` run a single required GitHub Actions workflow (for example, **Build and test**) that contains a job named `ci`. That job restores, builds, tests, and validates formatting with `dotnet format --verify-no-changes`.
+
+To block merges when CI fails, configure the repository rules for `main` in GitHub:
+
+1. Open `Settings` -> `Branches` or the repository rulesets page.
+2. Edit the protection rule or ruleset for `main`.
+3. Mark the status check **`Build and test / ci`** (workflow name / job id, as shown in the GitHub UI) as required.
+4. Optionally require branches to be up to date before merging if you want fresh validation against the current `main`.
 
 ## Notes
 
