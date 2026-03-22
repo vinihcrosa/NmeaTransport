@@ -7,7 +7,7 @@
         <Nullable>enable</Nullable>
 
         <PackageId>NmeaTransport</PackageId>
-        <Version>0.0.3</Version>
+        <Version>0.1.0</Version>
         <Authors>Vinicius Rosa</Authors>
         <Description>A simple NMEA transport library for .NET</Description>
         <PackageDescription>A simple NMEA transport library for .NET</PackageDescription>
@@ -20,11 +20,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <InternalsVisibleTo Include="NmeaTransport.Test" />
+        <InternalsVisibleTo Include="NmeaTransport.Test"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="System.Threading.Channels" Version="8.0.0" />
+        <PackageReference Include="System.Threading.Channels" Version="8.0.0"/>
     </ItemGroup>
 
 </Project>
