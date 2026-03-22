@@ -1,10 +1,11 @@
 # NmeaTransport
 
-`NmeaTransport` is a small .NET library for exchanging NMEA sentences over TCP.
+`NmeaTransport` is a small .NET library for exchanging NMEA sentences over TCP and UDP.
 
 It currently provides:
 
 - a reusable TCP client with automatic reconnection
+- a reusable UDP client for local listening plus unicast and broadcast sending
 - structured message sending via `NmeaMessage`
 - header-based message handlers for incoming sentences
 - a lightweight TCP server that validates and broadcasts NMEA sentences
@@ -93,6 +94,9 @@ await runTask;
 - `NmeaTcpClient`: main client implementation
 - `INmeaTcpClient`: public client contract
 - `NmeaTcpClientOptions`: logging, checksum, reconnect, connect timeout, and write timeout settings
+- `NmeaUdpClient`: UDP client implementation for local listening and datagram sending
+- `INmeaUdpClient`: public UDP client contract
+- `NmeaUdpClientOptions`: logging, checksum, receive timeout, write timeout, and endpoint settings
 - `NmeaMessage`: structured header + payload representation
 - `NmeaTcpServer`: lightweight TCP relay for valid NMEA sentences
 
