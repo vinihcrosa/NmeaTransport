@@ -136,6 +136,8 @@ public sealed class NmeaTcpServer : IAsyncDisposable
             out _);
     }
 
+    internal int ConnectedClientCount => _clients.Count;
+
     private void RegisterClient(TcpClient tcpClient, CancellationToken ct)
     {
         var clientId = Interlocked.Increment(ref _nextClientId);
