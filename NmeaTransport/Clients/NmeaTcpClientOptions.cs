@@ -6,6 +6,15 @@ namespace NmeaTransport.Clients;
 public sealed class NmeaTcpClientOptions
 {
     /// <summary>
+    /// Gets or sets whether the client writes lifecycle and error logs to the terminal.
+    /// </summary>
+    /// <remarks>
+    /// When <see langword="true"/>, the client writes logs to <see cref="Console"/>.
+    /// When <see langword="false"/> or <see langword="null"/>, the client does not write terminal logs.
+    /// </remarks>
+    public bool? EnableLogging { get; set; } = false;
+
+    /// <summary>
     /// Gets or sets whether received messages must have a valid checksum.
     /// </summary>
     public bool ValidateChecksum { get; set; }

@@ -198,7 +198,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
                     session = await ConnectSessionAsync(ct).ConfigureAwait(false);
                     SetActiveSession(session);
                     firstConnection.TrySetResult(true);
-                    Console.WriteLine($"Connected to {_host}:{_port}");
+                    Log($"Connected to {_host}:{_port}");
 
                     await ReadIncomingMessagesAsync(session, ct).ConfigureAwait(false);
                 }
@@ -208,7 +208,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
                 }
                 catch (Exception exception)
                 {
-                    Console.WriteLine($"Client connection error: {exception.Message}");
+                    Log($"Client connection error: {exception.Message}");
                 }
                 finally
                 {
@@ -265,7 +265,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
             }
             catch (Exception exception) when (exception is IOException or ObjectDisposedException or SocketException or TimeoutException)
             {
-                Console.WriteLine($"Client send error: {exception.Message}");
+                Log($"Client send error: {exception.Message}");
                 InvalidateSession(session, "Disconnected while sending.");
             }
         }
@@ -328,11 +328,11 @@ public sealed class NmeaTcpClient : INmeaTcpClient
 
             if (!NmeaSentence.TryParse(line, _options.ValidateChecksum, out var message, out var error))
             {
-                Console.WriteLine($"Invalid NMEA sentence discarded: {error} Raw='{line}'");
+                Log($"Invalid NMEA sentence discarded: {error} Raw='{line}'");
                 continue;
             }
 
-            Console.WriteLine($"RX: {line}");
+            Log($"RX: {line}");
             await DispatchAsync(message!, ct).ConfigureAwait(false);
         }
     }
@@ -356,7 +356,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
             }
             catch (Exception exception)
             {
-                Console.WriteLine($"Handler error for header '{message.Header}': {exception.Message}");
+                Log($"Handler error for header '{message.Header}': {exception.Message}");
             }
         }
     }
@@ -433,8 +433,16 @@ public sealed class NmeaTcpClient : INmeaTcpClient
 
         if (sessionToDispose is not null)
         {
-            Console.WriteLine(reason);
+            Log(reason);
             sessionToDispose.Dispose();
+        }
+    }
+
+    private void Log(string message)
+    {
+        if (_options.EnableLogging == true)
+        {
+            Console.WriteLine(message);
         }
     }
 
