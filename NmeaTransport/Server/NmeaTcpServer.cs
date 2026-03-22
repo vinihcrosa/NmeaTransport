@@ -2,12 +2,14 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using NmeaTransport.Clients;
 using NmeaTransport.Internal;
 
 namespace NmeaTransport.Server;
 
 public sealed class NmeaTcpServer : IAsyncDisposable
 {
+    private readonly NmeaMessageHandlerRegistry _handlers = new();
     private readonly object _stateLock = new();
     private readonly ConcurrentDictionary<int, ClientConnection> _clients = new();
     private readonly List<Task> _clientTasks = new();
@@ -117,6 +119,32 @@ public sealed class NmeaTcpServer : IAsyncDisposable
         await StopAsync().ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Sends a structured NMEA message to all connected TCP clients.
+    /// </summary>
+    /// <param name="message">The message to broadcast.</param>
+    /// <param name="ct">A token used to cancel the send operation.</param>
+    public Task SendAsync(NmeaMessage message, CancellationToken ct = default)
+    {
+        if (message is null)
+        {
+            throw new ArgumentNullException(nameof(message));
+        }
+
+        return BroadcastAsync(NmeaSentence.Serialize(message), ct);
+    }
+
+    /// <summary>
+    /// Registers an asynchronous handler for a specific NMEA header.
+    /// </summary>
+    /// <param name="header">The NMEA header to route to.</param>
+    /// <param name="handler">The handler to invoke for matching messages.</param>
+    /// <returns>An <see cref="IDisposable"/> that unregisters the handler when disposed.</returns>
+    public IDisposable RegisterHandler(string header, NmeaMessageHandler handler)
+    {
+        return _handlers.Register(header, handler);
+    }
+
     internal static bool HasValidNmeaPrefix(string? sentence)
     {
         return NmeaSentence.HasValidPrefix(sentence);
@@ -178,12 +206,17 @@ public sealed class NmeaTcpServer : IAsyncDisposable
                     break;
                 }
 
-                if (!IsValidSentence(line))
+                if (!NmeaSentence.TryParse(
+                    line,
+                    validateChecksum: line.Contains('*'),
+                    out var message,
+                    out _))
                 {
                     continue;
                 }
 
                 Console.WriteLine($"RX ({connection.Id}): {line}");
+                await DispatchAsync(message!, ct).ConfigureAwait(false);
                 await BroadcastAsync(line, ct).ConfigureAwait(false);
             }
         }
@@ -205,6 +238,11 @@ public sealed class NmeaTcpServer : IAsyncDisposable
             RemoveClient(connection);
             Console.WriteLine($"Client disconnected ({connection.Id})");
         }
+    }
+
+    private async Task DispatchAsync(NmeaMessage message, CancellationToken ct)
+    {
+        await _handlers.DispatchAsync(message, ct, Console.WriteLine).ConfigureAwait(false);
     }
 
     private async Task BroadcastAsync(string message, CancellationToken ct)

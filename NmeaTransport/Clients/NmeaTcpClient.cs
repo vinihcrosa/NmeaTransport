@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Channels;
@@ -18,9 +17,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
             SingleWriter = false
         });
 
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, NmeaMessageHandler>> _handlers =
-        new(StringComparer.OrdinalIgnoreCase);
-
+    private readonly NmeaMessageHandlerRegistry _handlers = new();
     private readonly object _stateLock = new();
     private readonly object _sessionLock = new();
     private readonly Encoding _encoding = Encoding.ASCII;
@@ -168,21 +165,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
     /// <inheritdoc />
     public IDisposable RegisterHandler(string header, NmeaMessageHandler handler)
     {
-        if (string.IsNullOrWhiteSpace(header))
-        {
-            throw new ArgumentException("The header must not be null or whitespace.", nameof(header));
-        }
-
-        if (handler is null)
-        {
-            throw new ArgumentNullException(nameof(handler));
-        }
-
-        var registrations = _handlers.GetOrAdd(header, _ => new ConcurrentDictionary<Guid, NmeaMessageHandler>());
-        var registrationId = Guid.NewGuid();
-        registrations[registrationId] = handler;
-
-        return new HandlerRegistration(this, header, registrationId);
+        return _handlers.Register(header, handler);
     }
 
     private async Task RunLifecycleAsync(TaskCompletionSource<bool> firstConnection, CancellationToken ct)
@@ -339,26 +322,7 @@ public sealed class NmeaTcpClient : INmeaTcpClient
 
     private async Task DispatchAsync(NmeaMessage message, CancellationToken ct)
     {
-        if (!_handlers.TryGetValue(message.Header, out var registrations) || registrations.IsEmpty)
-        {
-            return;
-        }
-
-        foreach (var handler in registrations.Values)
-        {
-            try
-            {
-                await handler(message, ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                Log($"Handler error for header '{message.Header}': {exception.Message}");
-            }
-        }
+        await _handlers.DispatchAsync(message, ct, Log).ConfigureAwait(false);
     }
 
     private async Task<ClientSession> WaitForActiveSessionAsync(CancellationToken ct)
@@ -446,21 +410,6 @@ public sealed class NmeaTcpClient : INmeaTcpClient
         }
     }
 
-    private void RemoveHandler(string header, Guid registrationId)
-    {
-        if (!_handlers.TryGetValue(header, out var registrations))
-        {
-            return;
-        }
-
-        registrations.TryRemove(registrationId, out _);
-
-        if (registrations.IsEmpty)
-        {
-            _handlers.TryRemove(header, out _);
-        }
-    }
-
     private static TaskCompletionSource<bool> CreateSignal()
     {
         return new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -474,31 +423,6 @@ public sealed class NmeaTcpClient : INmeaTcpClient
         }
 
         public string Sentence { get; }
-    }
-
-    private sealed class HandlerRegistration : IDisposable
-    {
-        private readonly NmeaTcpClient _owner;
-        private readonly string _header;
-        private readonly Guid _registrationId;
-        private int _disposed;
-
-        public HandlerRegistration(NmeaTcpClient owner, string header, Guid registrationId)
-        {
-            _owner = owner;
-            _header = header;
-            _registrationId = registrationId;
-        }
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) == 1)
-            {
-                return;
-            }
-
-            _owner.RemoveHandler(_header, _registrationId);
-        }
     }
 
     private sealed class ClientSession : IDisposable

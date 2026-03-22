@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -11,9 +10,7 @@ namespace NmeaTransport.Clients;
 /// </summary>
 public sealed class NmeaUdpClient : INmeaUdpClient
 {
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, NmeaMessageHandler>> _handlers =
-        new(StringComparer.OrdinalIgnoreCase);
-
+    private readonly NmeaMessageHandlerRegistry _handlers = new();
     private readonly object _stateLock = new();
     private readonly object _clientLock = new();
     private readonly Encoding _encoding = Encoding.ASCII;
@@ -192,21 +189,7 @@ public sealed class NmeaUdpClient : INmeaUdpClient
     /// <inheritdoc />
     public IDisposable RegisterHandler(string header, NmeaMessageHandler handler)
     {
-        if (string.IsNullOrWhiteSpace(header))
-        {
-            throw new ArgumentException("The header must not be null or whitespace.", nameof(header));
-        }
-
-        if (handler is null)
-        {
-            throw new ArgumentNullException(nameof(handler));
-        }
-
-        var registrations = _handlers.GetOrAdd(header, _ => new ConcurrentDictionary<Guid, NmeaMessageHandler>());
-        var registrationId = Guid.NewGuid();
-        registrations[registrationId] = handler;
-
-        return new HandlerRegistration(this, header, registrationId);
+        return _handlers.Register(header, handler);
     }
 
     private async Task ReceiveLoopAsync(UdpClient client, CancellationToken ct)
@@ -264,26 +247,7 @@ public sealed class NmeaUdpClient : INmeaUdpClient
 
     private async Task DispatchAsync(NmeaMessage message, CancellationToken ct)
     {
-        if (!_handlers.TryGetValue(message.Header, out var registrations) || registrations.IsEmpty)
-        {
-            return;
-        }
-
-        foreach (var handler in registrations.Values)
-        {
-            try
-            {
-                await handler(message, ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                Log($"Handler error for header '{message.Header}': {exception.Message}");
-            }
-        }
+        await _handlers.DispatchAsync(message, ct, Log).ConfigureAwait(false);
     }
 
     private void SendCore(NmeaMessage message, IPEndPoint remoteEndPoint)
@@ -338,43 +302,4 @@ public sealed class NmeaUdpClient : INmeaUdpClient
         }
     }
 
-    private void RemoveHandler(string header, Guid registrationId)
-    {
-        if (!_handlers.TryGetValue(header, out var registrations))
-        {
-            return;
-        }
-
-        registrations.TryRemove(registrationId, out _);
-
-        if (registrations.IsEmpty)
-        {
-            _handlers.TryRemove(header, out _);
-        }
-    }
-
-    private sealed class HandlerRegistration : IDisposable
-    {
-        private readonly NmeaUdpClient _owner;
-        private readonly string _header;
-        private readonly Guid _registrationId;
-        private int _disposed;
-
-        public HandlerRegistration(NmeaUdpClient owner, string header, Guid registrationId)
-        {
-            _owner = owner;
-            _header = header;
-            _registrationId = registrationId;
-        }
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) == 1)
-            {
-                return;
-            }
-
-            _owner.RemoveHandler(_header, _registrationId);
-        }
-    }
 }

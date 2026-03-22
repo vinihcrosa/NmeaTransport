@@ -74,6 +74,21 @@ internal sealed class RestartableServerHarness : IAsyncDisposable
         return new RawTcpClient(client);
     }
 
+    public async Task WaitForConnectedClientCountAsync(int expectedCount, TimeSpan? timeout = null)
+    {
+        if (_server is null)
+        {
+            throw new InvalidOperationException("The server is not running.");
+        }
+
+        using var timeoutCts = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(5));
+
+        while (_server.ConnectedClientCount < expectedCount)
+        {
+            await Task.Delay(25, timeoutCts.Token).ConfigureAwait(false);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);

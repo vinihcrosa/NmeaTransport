@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using NmeaTransport.Clients;
 using NmeaTransport.Server;
 
 namespace NmeaTransport.Test;
@@ -21,6 +22,32 @@ public class NmeaTcpServerIntegrationTests
         var received = await receiver.ReadRawLineAsync();
 
         Assert.Equal($"{sentence}\r\n", received);
+    }
+
+    [Fact]
+    public async Task RegisterHandlerAsync_DispatchesStructuredMessageAndPreservesBroadcast()
+    {
+        await using var harness = await ServerHarness.StartAsync();
+        await using var sender = await harness.ConnectClientAsync();
+        await using var receiver = await harness.ConnectClientAsync();
+        var messageReceived = new TaskCompletionSource<NmeaMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var registration = harness.Server.RegisterHandler("GPGLL", (message, _) =>
+        {
+            messageReceived.TrySetResult(message);
+            return Task.CompletedTask;
+        });
+
+        const string sentence = "$GPGLL,4916.45,N,12311.12,W,225444,A,*1D";
+
+        await sender.SendLineAsync(sentence);
+
+        var dispatched = await messageReceived.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var broadcast = await receiver.ReadRawLineAsync();
+
+        Assert.Equal("GPGLL", dispatched.Header);
+        Assert.Equal(["4916.45", "N", "12311.12", "W", "225444", "A", ""], dispatched.PayloadParts);
+        Assert.Equal($"{sentence}\r\n", broadcast);
     }
 
     [Fact]
@@ -88,6 +115,88 @@ public class NmeaTcpServerIntegrationTests
         var actual = received.OrderBy(message => message).ToArray();
 
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public async Task SendAsync_BroadcastsStructuredMessageToConnectedClients()
+    {
+        await using var harness = await ServerHarness.StartAsync();
+        await using var receiver = await harness.ConnectClientAsync();
+
+        await harness.Server.SendAsync(
+            new NmeaMessage("GPGLL", ["4916.45", "N", "12311.12", "W", "225444", "A", ""]));
+
+        var received = await receiver.ReadRawLineAsync();
+
+        Assert.Equal("$GPGLL,4916.45,N,12311.12,W,225444,A,*1D\r\n", received);
+    }
+
+    [Fact]
+    public async Task RegisterHandlerAsync_IgnoresInvalidMessages()
+    {
+        await using var harness = await ServerHarness.StartAsync();
+        await using var sender = await harness.ConnectClientAsync();
+        var handlerTriggered = false;
+
+        using var registration = harness.Server.RegisterHandler("GPGLL", (message, _) =>
+        {
+            handlerTriggered = true;
+            return Task.CompletedTask;
+        });
+
+        await sender.SendLineAsync("invalid");
+        await Task.Delay(150);
+
+        Assert.False(handlerTriggered);
+        Assert.False(harness.ServerTask.IsFaulted);
+    }
+
+    [Fact]
+    public async Task RegisterHandlerAsync_ContinuesBroadcastWhenHandlerThrows()
+    {
+        await using var harness = await ServerHarness.StartAsync();
+        await using var sender = await harness.ConnectClientAsync();
+        await using var receiver = await harness.ConnectClientAsync();
+
+        using var registration = harness.Server.RegisterHandler("GPGLL", (_, _) =>
+            throw new InvalidOperationException("boom"));
+
+        const string sentence = "$GPGLL,4916.45,N,12311.12,W,225444,A,*1D";
+
+        await sender.SendLineAsync(sentence);
+
+        var received = await receiver.ReadRawLineAsync();
+
+        Assert.Equal($"{sentence}\r\n", received);
+        Assert.False(harness.ServerTask.IsFaulted);
+    }
+
+    [Fact]
+    public async Task RegisterHandlerAsync_DisposingOneHandlerKeepsOtherRegistrationsActive()
+    {
+        await using var harness = await ServerHarness.StartAsync();
+        await using var sender = await harness.ConnectClientAsync();
+        var firstCount = 0;
+        var secondCount = 0;
+        using var keepRegistration = harness.Server.RegisterHandler("GPGLL", (message, _) =>
+        {
+            Interlocked.Increment(ref secondCount);
+            return Task.CompletedTask;
+        });
+
+        var disposeRegistration = harness.Server.RegisterHandler("GPGLL", (message, _) =>
+        {
+            Interlocked.Increment(ref firstCount);
+            return Task.CompletedTask;
+        });
+
+        disposeRegistration.Dispose();
+
+        await sender.SendLineAsync("$GPGLL,4916.45,N,12311.12,W,225444,A,*1D");
+        await Task.Delay(150);
+
+        Assert.Equal(0, firstCount);
+        Assert.Equal(1, secondCount);
     }
 
     [Fact]
