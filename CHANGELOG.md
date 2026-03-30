@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/vinihcrosa/NmeaTransport/compare/v0.4.0...v0.5.0) (2026-03-30)
+
+
+### Features
+
+* **nmea:** add support for configurable message prefixes ([e9e9b14](https://github.com/vinihcrosa/NmeaTransport/commit/e9e9b14b2a343502d019e68b103a3c69e7c83c07))
+* **nmea:** add support for configurable message prefixes ([bfb152a](https://github.com/vinihcrosa/NmeaTransport/commit/bfb152a84f4799a1b4b4074dc21b9e45b1d35b59))
+
 ## [0.4.0](https://github.com/vinihcrosa/NmeaTransport/compare/v0.3.0...v0.4.0) (2026-03-22)
 
 
