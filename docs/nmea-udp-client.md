@@ -22,6 +22,7 @@
   - `DefaultRemoteEndPoint`
   - `BroadcastAddress`
 - `NmeaMessage`
+  - `Prefix`
   - `Header`
   - `PayloadParts`
 
@@ -81,14 +82,26 @@ await client.SendBroadcastAsync(new NmeaMessage("GPRMC", new[]
     "3"
 }));
 
+await client.SendAsync(new NmeaMessage("AIVDM", new[]
+{
+    "1",
+    "1",
+    string.Empty,
+    "A",
+    "15MvqR0P00PD;88MD5MTDwvN0<0u",
+    "0"
+}, '!'));
+
 await client.DisconnectAsync();
 ```
 
 ## Validacao e serializacao
-- O envio serializa a mensagem como `$<header>,<payload>*<checksum>`.
+- `NmeaMessage` usa `$` como prefixo padrao e tambem aceita `!` quando informado explicitamente.
+- O envio serializa a mensagem como `<prefix><header>,<payload>*<checksum>`.
 - O checksum e calculado sobre o corpo da sentenca, sem incluir o inicializador.
 - O recebimento aceita datagramas com ou sem `\r\n` no final.
 - O recebimento separa a sentenca em:
+  - `Prefix`
   - `Header`
   - `PayloadParts`, obtido por `Split(',')`
 

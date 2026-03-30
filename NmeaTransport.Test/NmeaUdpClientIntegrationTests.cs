@@ -23,6 +23,20 @@ public class NmeaUdpClientIntegrationTests
     }
 
     [Fact]
+    public async Task SendAsync_PreservesConfiguredBangPrefix()
+    {
+        await using var receiver = new RawUdpPeer(bindAddress: IPAddress.Loopback);
+        await using var client = CreateClient(receiver.Port);
+
+        await client.ConnectAsync();
+        await client.SendAsync(new NmeaMessage("GPGLL", ["4916.45", "N", "12311.12", "W", "225444", "A", ""], '!'), new IPEndPoint(IPAddress.Loopback, receiver.Port));
+
+        var received = await receiver.ReceiveAsync();
+
+        Assert.Equal("!GPGLL,4916.45,N,12311.12,W,225444,A,*1D", received);
+    }
+
+    [Fact]
     public async Task SendAsync_UsesDefaultRemoteEndpointWhenConfigured()
     {
         await using var receiver = new RawUdpPeer(bindAddress: IPAddress.Loopback);

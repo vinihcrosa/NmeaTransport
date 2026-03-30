@@ -209,6 +209,20 @@ public class NmeaTcpServerIntegrationTests
     }
 
     [Fact]
+    public async Task SendAsync_PreservesConfiguredBangPrefix()
+    {
+        await using var harness = await ServerHarness.StartAsync();
+        await using var receiver = await harness.ConnectClientAsync();
+
+        await harness.Server.SendAsync(
+            new NmeaMessage("GPGLL", ["4916.45", "N", "12311.12", "W", "225444", "A", ""], '!'));
+
+        var received = await receiver.ReadRawLineAsync();
+
+        Assert.Equal("!GPGLL,4916.45,N,12311.12,W,225444,A,*1D\r\n", received);
+    }
+
+    [Fact]
     public async Task RegisterHandlerAsync_IgnoresInvalidMessages()
     {
         await using var harness = await ServerHarness.StartAsync();
