@@ -12,6 +12,7 @@
 
 ### Tipos publicos
 - `NmeaMessage`
+  - `Prefix`
   - `Header`
   - `PayloadParts`
 - `NmeaTcpClientOptions`
@@ -67,13 +68,25 @@ await client.SendAsync(new NmeaMessage("GPGLL", new[]
     string.Empty
 }));
 
+await client.SendAsync(new NmeaMessage("AIVDM", new[]
+{
+    "1",
+    "1",
+    string.Empty,
+    "A",
+    "15MvqR0P00PD;88MD5MTDwvN0<0u",
+    "0"
+}, '!'));
+
 await client.DisconnectAsync();
 ```
 
 ## Validacao e serializacao
-- O envio sempre serializa a mensagem como `$<header>,<payload>*<checksum>\r\n`.
+- `NmeaMessage` usa `$` como prefixo padrao e tambem aceita `!` quando informado explicitamente.
+- O envio serializa a mensagem como `<prefix><header>,<payload>*<checksum>\r\n`, preservando o prefixo configurado.
 - O checksum e calculado sobre o corpo da sentenca, sem incluir o inicializador e sem incluir o terminador de linha.
 - O recebimento separa a sentenca em:
+  - `Prefix`
   - `Header`
   - `PayloadParts`, obtido por `Split(',')`
 

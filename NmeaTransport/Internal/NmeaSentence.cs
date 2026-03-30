@@ -7,11 +7,16 @@ internal static class NmeaSentence
 {
     private static readonly char[] ValidInitializers = { '$', '!' };
 
+    internal static bool IsSupportedPrefix(char prefix)
+    {
+        return ValidInitializers.Contains(prefix);
+    }
+
     internal static bool HasValidPrefix(string? sentence)
     {
         var normalizedSentence = NormalizeLeadingNoise(sentence);
         return !string.IsNullOrWhiteSpace(normalizedSentence) &&
-               ValidInitializers.Contains(normalizedSentence[0]);
+               IsSupportedPrefix(normalizedSentence[0]);
     }
 
     internal static bool ValidateChecksum(string sentence)
@@ -66,7 +71,7 @@ internal static class NmeaSentence
 
         var body = BuildBody(message.Header, message.PayloadParts);
         var checksum = CalculateChecksum(body.AsSpan());
-        return $"${body}*{checksum:X2}";
+        return $"{message.Prefix}{body}*{checksum:X2}";
     }
 
     internal static bool TryParse(
@@ -86,6 +91,7 @@ internal static class NmeaSentence
             return false;
         }
 
+        var prefix = normalizedSentence![0];
         var body = ExtractBody(normalizedSentence!);
 
         if (body.Length == 0)
@@ -96,7 +102,7 @@ internal static class NmeaSentence
         }
 
         var segments = body.Split(',', StringSplitOptions.None);
-        message = new NmeaMessage(segments[0], segments.Skip(1).ToArray());
+        message = new NmeaMessage(segments[0], segments.Skip(1).ToArray(), prefix);
         error = null;
         return true;
     }
